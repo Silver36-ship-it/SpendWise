@@ -1,16 +1,19 @@
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
+import '../../../../core/theme/context_extensions.dart';
+import '../../../../core/utils/size_utils.dart';
+import '../../../../core/widgets/app_dropdown_field.dart';
+import '../../../../core/widgets/app_text_field.dart';
+import '../../../../core/widgets/custom_app_loader.dart';
+import '../../../../core/widgets/purple_background.dart';
+import '../../../auth/presentation/providers/riverpod_auth_provider.dart';
 import '../../domain/entities/transaction.dart';
-import '../providers/transaction_provider.dart';
-
 import '../../domain/entities/transaction_category.dart';
+import '../providers/transaction_riverpod_provider.dart';
 
-import '../../../auth/presentation/providers/auth_provider.dart';
-
-class AddTransactionPage extends StatefulWidget {
-
-
+class AddTransactionPage extends ConsumerStatefulWidget {
   final Transaction? transaction;
 
   const AddTransactionPage({
@@ -19,16 +22,19 @@ class AddTransactionPage extends StatefulWidget {
   });
 
   @override
-  State<AddTransactionPage> createState() =>
+  ConsumerState<AddTransactionPage> createState() =>
       _AddTransactionPageState();
 }
 
-class _AddTransactionPageState extends State<AddTransactionPage> {
+class _AddTransactionPageState
+    extends ConsumerState<AddTransactionPage> {
   final titleController = TextEditingController();
   final amountController = TextEditingController();
-  TransactionCategory selectedCategory = TransactionCategory.other;
-  TransactionType selectedType = TransactionType.expense;
 
+  TransactionCategory? selectedCategory;
+  TransactionType? selectedType;
+
+  bool get isEditing => widget.transaction != null;
 
   @override
   void initState() {
@@ -39,6 +45,7 @@ class _AddTransactionPageState extends State<AddTransactionPage> {
     if (transaction != null) {
       titleController.text = transaction.title;
       amountController.text = transaction.amount.toString();
+
       selectedCategory = transaction.category;
       selectedType = transaction.type;
     }
@@ -52,11 +59,15 @@ class _AddTransactionPageState extends State<AddTransactionPage> {
   }
 
   Future<void> _addTransaction() async {
-    final authProvider = context.read<AuthProvider>();
-    final user = authProvider.user;
+    final authState = ref.read(authProvider);
+    final auth = authState.valueOrNull;
+    final user = auth?.user;
 
     final title = titleController.text.trim();
-    final amount = double.tryParse(amountController.text.trim());
+
+    final amount = double.tryParse(
+      amountController.text.trim(),
+    );
 
     if (title.isEmpty) {
       _showError('Please enter a title.');
@@ -68,11 +79,20 @@ class _AddTransactionPageState extends State<AddTransactionPage> {
       return;
     }
 
+    if (selectedCategory == null) {
+      _showError('Please select a category.');
+      return;
+    }
+
+    if (selectedType == null) {
+      _showError('Please select a type.');
+      return;
+    }
+
     if (user == null) {
       _showError('You are not logged in.');
       return;
     }
-
 
     final existingTransaction = widget.transaction;
 
@@ -82,129 +102,246 @@ class _AddTransactionPageState extends State<AddTransactionPage> {
       title: title,
       userId: user.id,
       amount: amount,
-      type: selectedType,
-      category: selectedCategory,
-      date: existingTransaction?.date ??
-          DateTime.now(),
+
+      type: selectedType!,
+      typeValue: selectedType!.name,
+
+      category: selectedCategory!,
+      categoryValue: selectedCategory!.name,
+
+      date: existingTransaction?.date ?? DateTime.now(),
     );
 
-    final provider = context.read<TransactionProvider>();
+    final notifier =
+    ref.read(transactionActionProvider(user.id).notifier);
 
     if (existingTransaction == null) {
-      await provider.addTransaction(transaction);
+      await notifier.addTransaction(transaction);
     } else {
-      await provider.updateTransaction(transaction);
+      await notifier.updateTransaction(transaction);
     }
 
-    if (!mounted) return;
+    if (!mounted) {
+      return;
+    }
 
-    Navigator.pop(context);
+    context.pop();
   }
 
   void _showError(String message) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text(message),
+        content: Text(
+          message,
+          style: TextStyle(
+            fontSize: getFontSize(14, context),
+          ),
+        ),
       ),
     );
   }
 
-
-
   @override
   Widget build(BuildContext context) {
-    final transactionProvider = context.watch<TransactionProvider>();
+    final authState = ref.watch(authProvider);
+    final auth = authState.valueOrNull;
+    final user = auth?.user;
+
+    final transactionState = user == null
+        ? null
+        : ref.watch(transactionsProvider(user.id));
+
+    final actionState = user == null
+        ? null
+        : ref.watch(transactionActionProvider(user.id));
+
+    final textTheme = Theme.of(context).textTheme;
+
+    final isLoading = actionState?.isLoading ?? false;
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Add Transaction'),
-      ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          children: [
-            TextField(
-              controller: titleController,
-              decoration: const InputDecoration(
-                labelText: 'Title',
+      backgroundColor: Colors.transparent,
+      body: PurpleBackground(
+        child: SafeArea(
+          child: Column(
+            children: [
+              // App bar area
+              Padding(
+                padding: getPadding(
+                  context: context,
+                  horizontal: 16,
+                  vertical: 12,
+                ),
+                child: Row(
+                  children: [
+                    IconButton(
+                      onPressed: isLoading
+                          ? null
+                          : () {
+                        context.pop();
+                      },
+                      icon: Icon(
+                        Icons.arrow_back_rounded,
+                        color: context.textPrimary,
+                      ),
+                    ),
+
+                    SizedBox(
+                      width: getHorizontalSize(8, context),
+                    ),
+
+                    Expanded(
+                      child: Text(
+                        isEditing
+                            ? 'Edit Transaction'
+                            : 'Add Transaction',
+                        style: textTheme.titleLarge?.copyWith(
+                          fontSize: getFontSize(20, context),
+                          color: context.textPrimary,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ],
+                ),
               ),
-            ),
 
-            const SizedBox(height: 16),
-
-            TextField(
-              controller: amountController,
-              keyboardType: TextInputType.number,
-              decoration: const InputDecoration(
-                labelText: 'Amount',
-              ),
-            ),
-
-            const SizedBox(height: 16),
-
-            DropdownButtonFormField<TransactionCategory>(
-              initialValue : selectedCategory,
-              decoration: const InputDecoration(
-                labelText: 'Category',
-              ),
-              items: TransactionCategory.values.map((category) {
-                return DropdownMenuItem(
-                  value: category,
-                  child: Text(
-                    category.label,
+              // Page content
+              Expanded(
+                child: SingleChildScrollView(
+                  padding: getPadding(
+                    context: context,
+                    all: 16,
                   ),
-                );
-              }).toList(),
-              onChanged: (value) {
-                if (value == null) return;
+                  child: Column(
+                    children: [
+                      AppTextField(
+                        controller: titleController,
+                        hintText: 'Title',
+                      ),
 
-                setState(() {
-                  selectedCategory = value;
-                });
-              },
-            ),
+                      SizedBox(
+                        height: getVerticalSize(16, context),
+                      ),
 
-            const SizedBox(height: 16),
+                      AppTextField(
+                        controller: amountController,
+                        hintText: 'Amount',
+                        keyboardType:
+                        const TextInputType.numberWithOptions(
+                          decimal: true,
+                        ),
+                      ),
 
-            DropdownButtonFormField<TransactionType>(
-              initialValue: selectedType,
-              decoration: const InputDecoration(
-                labelText: 'Type',
-              ),
-              items: TransactionType.values.map((type) {
-                return DropdownMenuItem(
-                  value: type,
-                  child: Text(
-                    type == TransactionType.income
-                        ? 'Income'
-                        : 'Expense',
+                      SizedBox(
+                        height: getVerticalSize(16, context),
+                      ),
+
+                      AppDropdownField<TransactionCategory>(
+                        value: selectedCategory,
+                        hintText: 'Category',
+                        items: TransactionCategory.values
+                            .where(
+                              (category) => category != TransactionCategory.unknown,
+                        )
+                            .map(
+                              (category) => DropdownMenuItem(
+                            value: category,
+                            child: Text(category.label),
+                          ),
+                        )
+                            .toList(),
+                        onChanged: isLoading
+                            ? null
+                            : (value) {
+                          setState(() {
+                            selectedCategory = value;
+                          });
+                        },
+                      ),
+
+                      SizedBox(
+                        height: getVerticalSize(16, context),
+                      ),
+
+                      AppDropdownField<TransactionType>(
+                        value: selectedType,
+                        hintText: 'Type',
+                        items: TransactionType.values
+                            .where(
+                              (type) => type != TransactionType.unknown,
+                        )
+                            .map(
+                              (type) => DropdownMenuItem(
+                            value: type,
+                            child: Text(type.name),
+                          ),
+                        )
+                            .toList(),
+                        onChanged: isLoading
+                            ? null
+                            : (value) {
+                          setState(() {
+                            selectedType = value;
+                          });
+                        },
+                      ),
+
+                      SizedBox(
+                        height: getVerticalSize(24, context),
+                      ),
+
+                      SizedBox(
+                        width: double.infinity,
+                        child: ElevatedButton(
+                          onPressed: isLoading
+                              ? null
+                              : _addTransaction,
+                          child: isLoading
+                              ? Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              AppLoader(
+                                size: getSize(20, context),
+                                color: context.accent,
+                              ),
+                              SizedBox(
+                                width: getHorizontalSize(
+                                  8,
+                                  context,
+                                ),
+                              ),
+                              Text(
+                                'Saving...',
+                                style: TextStyle(
+                                  fontSize: getFontSize(
+                                    14,
+                                    context,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          )
+                              : Text(
+                            isEditing
+                                ? 'Save Changes'
+                                : 'Add Transaction',
+                            style: TextStyle(
+                              fontSize: getFontSize(
+                                14,
+                                context,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
-                );
-              }).toList(),
-              onChanged: (value) {
-                if (value == null) return;
-
-                setState(() {
-                  selectedType = value;
-                });
-              },
-            ),
-
-            const SizedBox(height: 24),
-
-            ElevatedButton(
-              onPressed: transactionProvider.isLoading
-                  ? null
-                  : _addTransaction,
-              child: transactionProvider.isLoading
-                  ? const Text('Saving...')
-                  : Text(
-                widget.transaction == null
-                    ? 'Add Transaction'
-                    : 'Save Changes',
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
