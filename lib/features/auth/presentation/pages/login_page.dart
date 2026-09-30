@@ -1,21 +1,27 @@
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
-import '../providers/auth_provider.dart';
-import '../../../dashboard/presentation/pages/dashboard_page.dart';
-import 'registration_page.dart';
+import '../../../../core/theme/context_extensions.dart';
+import '../../../../core/utils/size_utils.dart';
+import '../../../../core/widgets/app_text_field.dart';
+import '../../../../core/widgets/custom_app_loader.dart';
 import '../../../../core/widgets/purple_background.dart';
 
-class LoginPage extends StatefulWidget {
+import '../providers/riverpod_auth_provider.dart';
+
+class LoginPage extends ConsumerStatefulWidget {
   const LoginPage({super.key});
 
   @override
-  State<LoginPage> createState() => _LoginPageState();
+  ConsumerState<LoginPage> createState() => _LoginPageState();
 }
 
-class _LoginPageState extends State<LoginPage> {
+class _LoginPageState extends ConsumerState<LoginPage> {
   final usernameController = TextEditingController();
   final passwordController = TextEditingController();
+
+  String? _validationError;
 
   @override
   void dispose() {
@@ -25,95 +31,173 @@ class _LoginPageState extends State<LoginPage> {
   }
 
   Future<void> _login() async {
-    await context.read<AuthProvider>().login(
-      username: usernameController.text.trim(),
-      password: passwordController.text,
+    setState(() {
+      _validationError = null;
+    });
+
+    final username = usernameController.text.trim();
+    final password = passwordController.text;
+
+    // Local validation
+    if (username.isEmpty || password.isEmpty) {
+      setState(() {
+        _validationError = 'Please enter your username and password.';
+      });
+      return;
+    }
+
+    await ref.read(authProvider.notifier).login(
+      username: username,
+      password: password,
     );
 
     if (!mounted) return;
 
-    final authProvider = context.read<AuthProvider>();
+    final authState = ref.read(authProvider);
 
-    if (authProvider.user != null) {
-      await authProvider.verifyAuthentication();
+    if (authState.hasError) {
+      return;
+    }
+
+    final auth = authState.valueOrNull;
+
+    if (auth?.user != null) {
+      await ref
+          .read(authProvider.notifier)
+          .verifyAuthentication();
 
       if (!mounted) return;
 
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(
-          builder: (_) => const DashboardPage(),
-        ),
-      );
+      context.go('/dashboard');
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    final authProvider = context.watch<AuthProvider>();
+    final authState = ref.watch(authProvider);
+    final auth = authState.valueOrNull;
+
+    final textTheme = Theme.of(context).textTheme;
+
+    final isLoading = auth?.isLoading ?? false;
+
+    final errorMessage = _validationError ??
+        (authState.hasError ? authState.error.toString() : null);
 
     return Scaffold(
       backgroundColor: Colors.transparent,
       body: PurpleBackground(
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            children: [
-              const Text(
-                'Login',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 28,
-                  fontWeight: FontWeight.bold,
+        child: SafeArea(
+          child: SingleChildScrollView(
+            padding: getPadding(
+              context: context,
+              all: 16,
+            ),
+            child: Column(
+              children: [
+                SizedBox(
+                  height: getVerticalSize(40, context),
                 ),
-              ),
 
-              const SizedBox(height: 40),
-
-              TextField(
-                controller: usernameController,
-                decoration: const InputDecoration(
-                  labelText: 'Username',
-                ),
-              ),
-              const SizedBox(height: 16),
-
-              TextField(
-                controller: passwordController,
-                obscureText: true,
-                decoration: const InputDecoration(
-                  labelText: 'Password',
-                ),
-              ),
-
-              const SizedBox(height: 24),
-
-              if (authProvider.errorMessage != null)
                 Text(
-                  authProvider.errorMessage!,
+                  'Login',
+                  style: textTheme.headlineMedium?.copyWith(
+                    fontSize: getFontSize(28, context),
+                    color: context.textPrimary,
+                  ),
+                  textAlign: TextAlign.center,
                 ),
 
-              const SizedBox(height: 16),
+                SizedBox(
+                  height: getVerticalSize(40, context),
+                ),
 
-              ElevatedButton(
-                onPressed: authProvider.isLoading ? null : _login,
-                child: authProvider.isLoading
-                    ? const Text('Logging in...')
-                    : const Text('Login'),
-              ),
+                AppTextField(
+                  controller: usernameController,
+                  hintText: 'Username',
+                ),
 
-              TextButton(
-                onPressed: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => const RegisterPage(),
+                SizedBox(
+                  height: getVerticalSize(16, context),
+                ),
+
+                AppTextField(
+                  controller: passwordController,
+                  hintText: 'Password',
+                  obscureText: true,
+                ),
+
+                SizedBox(
+                  height: getVerticalSize(24, context),
+                ),
+
+                if (errorMessage != null)
+                  Padding(
+                    padding: getPadding(
+                      context: context,
+                      horizontal: 8,
                     ),
-                  );
-                },
-                child: const Text('Create an account'),
-              ),
-            ],
+                    child: Text(
+                      errorMessage,
+                      style: textTheme.bodyMedium?.copyWith(
+                        fontSize: getFontSize(14, context),
+                        color: context.expense,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                  ),
+
+                if (errorMessage != null)
+                  SizedBox(
+                    height: getVerticalSize(16, context),
+                  ),
+
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton(
+                    onPressed: isLoading ? null : _login,
+                    child: isLoading
+                        ? Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        AppLoader(
+                          size: getSize(20, context),
+                          color: context.accent,
+                        ),
+                        SizedBox(
+                          width: getHorizontalSize(8, context),
+                        ),
+                        Text(
+                          'Logging in...',
+                          style: TextStyle(
+                            fontSize: getFontSize(14, context),
+                          ),
+                        ),
+                      ],
+                    )
+                        : Text(
+                      'Login',
+                      style: TextStyle(
+                        fontSize: getFontSize(14, context),
+                      ),
+                    ),
+                  ),
+                ),
+
+                TextButton(
+                  onPressed: () {
+                    context.push('/register');
+                  },
+                  child: Text(
+                    'Create an account',
+                    style: textTheme.labelLarge?.copyWith(
+                      fontSize: getFontSize(14, context),
+                      color: context.textPrimary,
+                    ),
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),

@@ -1,23 +1,43 @@
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
-import '../providers/auth_provider.dart';
+import '../../../../core/theme/context_extensions.dart';
+import '../../../../core/utils/size_utils.dart';
+import '../../../../core/widgets/app_text_field.dart';
+import '../../../../core/widgets/custom_app_loader.dart';
+import '../../../../core/widgets/purple_background.dart';
 
-import '../../../dashboard/presentation/pages/dashboard_page.dart';
+import '../providers/riverpod_auth_provider.dart';
 
-class RegisterPage extends StatefulWidget {
-  const RegisterPage({super.key});
+class RegisterPage extends ConsumerStatefulWidget {
+  const RegisterPage({
+    super.key,
+  });
 
   @override
-  State<RegisterPage> createState() => _RegisterPageState();
+  ConsumerState<RegisterPage> createState() =>
+      _RegisterPageState();
 }
 
-class _RegisterPageState extends State<RegisterPage> {
-  final firstNameController = TextEditingController();
-  final lastNameController = TextEditingController();
-  final usernameController = TextEditingController();
-  final passwordController = TextEditingController();
-  final confirmPasswordController = TextEditingController();
+class _RegisterPageState
+    extends ConsumerState<RegisterPage> {
+  final firstNameController =
+  TextEditingController();
+
+  final lastNameController =
+  TextEditingController();
+
+  final usernameController =
+  TextEditingController();
+
+  final passwordController =
+  TextEditingController();
+
+  final confirmPasswordController =
+  TextEditingController();
+
+  String? _validationError;
 
   @override
   void dispose() {
@@ -26,114 +46,282 @@ class _RegisterPageState extends State<RegisterPage> {
     usernameController.dispose();
     passwordController.dispose();
     confirmPasswordController.dispose();
+
     super.dispose();
   }
 
   Future<void> _register() async {
-    if (passwordController.text != confirmPasswordController.text) {
+    setState(() {
+      _validationError = null;
+    });
+
+    final firstName =
+    firstNameController.text.trim();
+
+    final lastName =
+    lastNameController.text.trim();
+
+    final username =
+    usernameController.text.trim();
+
+    final password =
+        passwordController.text;
+
+    final confirmPassword =
+        confirmPasswordController.text;
+
+    // Check for empty fields.
+    if (firstName.isEmpty ||
+        lastName.isEmpty ||
+        username.isEmpty ||
+        password.isEmpty ||
+        confirmPassword.isEmpty) {
+      setState(() {
+        _validationError =
+        'Please fill in all fields.';
+      });
+
       return;
     }
 
-    final authProvider = context.read<AuthProvider>();
+    // Check password match.
+    if (password != confirmPassword) {
+      setState(() {
+        _validationError =
+        'Passwords do not match.';
+      });
 
-    final user = await authProvider.register(
-      firstName: firstNameController.text.trim(),
-      lastName: lastNameController.text.trim(),
-      username: usernameController.text.trim(),
-      password: passwordController.text,
+      return;
+    }
+
+    final user = await ref
+        .read(authProvider.notifier)
+        .register(
+      firstName: firstName,
+      lastName: lastName,
+      username: username,
+      password: password,
     );
 
     if (!mounted) return;
 
     if (user != null) {
-      await authProvider.loginAfterRegistration(
+      await ref
+          .read(authProvider.notifier)
+          .loginAfterRegistration(
         user: user,
       );
 
       if (!mounted) return;
 
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(
-          builder: (_) => const DashboardPage(),
-        ),
-      );
+      context.go('/dashboard');
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    final authProvider = context.watch<AuthProvider>();
+    final authState = ref.watch(authProvider);
+
+    final auth = authState.valueOrNull;
+
+    final isLoading =
+        auth?.isLoading ?? false;
+
+    final errorMessage =
+        _validationError ??
+            (authState.hasError
+                ? authState.error.toString()
+                : null);
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Register'),
-      ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          children: [
-            TextField(
-              controller: firstNameController,
-              decoration: const InputDecoration(
-                labelText: 'First name',
-              ),
-            ),
-
-            const SizedBox(height: 16),
-
-            TextField(
-              controller: lastNameController,
-              decoration: const InputDecoration(
-                labelText: 'Last name',
-              ),
-            ),
-
-            const SizedBox(height: 16),
-
-            TextField(
-              controller: usernameController,
-              decoration: const InputDecoration(
-                labelText: 'Username',
-              ),
-            ),
-
-            const SizedBox(height: 16),
-
-            TextField(
-              controller: passwordController,
-              obscureText: true,
-              decoration: const InputDecoration(
-                labelText: 'Password',
-              ),
-            ),
-
-            const SizedBox(height: 16),
-
-            TextField(
-              controller: confirmPasswordController,
-              obscureText: true,
-              decoration: const InputDecoration(
-                labelText: 'Confirm password',
-              ),
-            ),
-
-            const SizedBox(height: 24),
-
-            if (authProvider.errorMessage != null)
-              Text(
-                authProvider.errorMessage!,
+      backgroundColor: Colors.transparent,
+      body: PurpleBackground(
+        child: SafeArea(
+          child: Column(
+            children: [
+              AppBar(
+                backgroundColor: Colors.transparent,
+                elevation: 0,
+                foregroundColor:
+                context.textPrimary,
+                title: Text(
+                  'Register',
+                  style: Theme.of(context)
+                      .textTheme
+                      .titleLarge
+                      ?.copyWith(
+                    color:
+                    context.textPrimary,
+                    fontSize: getFontSize(
+                      22,
+                      context,
+                    ),
+                  ),
+                ),
               ),
 
-            const SizedBox(height: 16),
+              Expanded(
+                child: SingleChildScrollView(
+                  padding: getPadding(
+                    context: context,
+                    horizontal: 16,
+                    vertical: 16,
+                  ),
+                  child: Column(
+                    children: [
+                      AppTextField(
+                        controller:
+                        firstNameController,
+                        hintText: 'First name',
+                      ),
 
-            ElevatedButton(
-              onPressed: authProvider.isLoading ? null : _register,
-              child: authProvider.isLoading
-                  ? const Text('Creating account...')
-                  : const Text('Register'),
-            ),
-          ],
+                      SizedBox(
+                        height: getVerticalSize(
+                          16,
+                          context,
+                        ),
+                      ),
+
+                      AppTextField(
+                        controller:
+                        lastNameController,
+                        hintText: 'Last name',
+                      ),
+
+                      SizedBox(
+                        height: getVerticalSize(
+                          16,
+                          context,
+                        ),
+                      ),
+
+                      AppTextField(
+                        controller:
+                        usernameController,
+                        hintText: 'Username',
+                      ),
+
+                      SizedBox(
+                        height: getVerticalSize(
+                          16,
+                          context,
+                        ),
+                      ),
+
+                      AppTextField(
+                        controller:
+                        passwordController,
+                        obscureText: true,
+                        hintText: 'Password',
+                      ),
+
+                      SizedBox(
+                        height: getVerticalSize(
+                          16,
+                          context,
+                        ),
+                      ),
+
+                      AppTextField(
+                        controller:
+                        confirmPasswordController,
+                        obscureText: true,
+                        hintText:
+                        'Confirm password',
+                      ),
+
+                      SizedBox(
+                        height: getVerticalSize(
+                          24,
+                          context,
+                        ),
+                      ),
+
+                      if (errorMessage != null) ...[
+                        Text(
+                          errorMessage,
+                          textAlign: TextAlign.center,
+                          style: Theme.of(context)
+                              .textTheme
+                              .bodyMedium
+                              ?.copyWith(
+                            color:
+                            context.expense,
+                            fontSize:
+                            getFontSize(
+                              14,
+                              context,
+                            ),
+                          ),
+                        ),
+
+                        SizedBox(
+                          height: getVerticalSize(
+                            16,
+                            context,
+                          ),
+                        ),
+                      ],
+
+                      SizedBox(
+                        width: double.infinity,
+                        child: ElevatedButton(
+                          onPressed:
+                          isLoading
+                              ? null
+                              : _register,
+                          child: isLoading
+                              ? Row(
+                            mainAxisAlignment:
+                            MainAxisAlignment
+                                .center,
+                            children: [
+                              AppLoader(
+                                size:
+                                getSize(
+                                  20,
+                                  context,
+                                ),
+                              ),
+
+                              SizedBox(
+                                width:
+                                getHorizontalSize(
+                                  8,
+                                  context,
+                                ),
+                              ),
+
+                              Text(
+                                'Creating account...',
+                                style: TextStyle(
+                                  fontSize:
+                                  getFontSize(
+                                    14,
+                                    context,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          )
+                              : Text(
+                            'Register',
+                            style: TextStyle(
+                              fontSize:
+                              getFontSize(
+                                14,
+                                context,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );

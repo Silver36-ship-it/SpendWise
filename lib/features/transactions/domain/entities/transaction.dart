@@ -2,7 +2,23 @@ import 'package:spend_wise/features/transactions/domain/entities/transaction_cat
 
 enum TransactionType {
   income,
-  expense
+  expense,
+  unknown;
+
+  static TransactionType fromWire(String? value) {
+    if (value == null) {
+      return TransactionType.unknown;
+    }
+
+    switch (value.toLowerCase()) {
+      case 'income':
+        return TransactionType.income;
+      case 'expense':
+        return TransactionType.expense;
+      default:
+        return TransactionType.unknown;
+    }
+  }
 }
 
 class Transaction {
@@ -10,8 +26,13 @@ class Transaction {
   final int userId;
   final String title;
   final double amount;
+
   final TransactionType type;
+  final String typeValue;
+
   final TransactionCategory category;
+  final String categoryValue;
+
   final DateTime date;
 
   const Transaction({
@@ -20,9 +41,9 @@ class Transaction {
     required this.title,
     required this.amount,
     required this.type,
+    required this.typeValue,
     required this.category,
+    required this.categoryValue,
     required this.date,
   });
-
-
 }

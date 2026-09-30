@@ -2,6 +2,8 @@ import 'dart:ui';
 
 import 'package:flutter/material.dart';
 
+import '../theme/app_theme.dart';
+
 class PurpleBackground extends StatelessWidget {
   final Widget child;
 
@@ -20,9 +22,9 @@ class PurpleBackground extends StatelessWidget {
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
               colors: [
-                Color(0xFF7B2CBF),
-                Color(0xFF4A148C),
-                Color(0xFF16052B),
+                AppColors.purple,
+                AppColors.purpleMid,
+                AppColors.darkPurple,
               ],
             ),
           ),
